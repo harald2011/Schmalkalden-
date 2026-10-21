@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Agenten-Netzwerk P2P - Schmalkalden</title>
+  <title>Agenten-Netzwerk & Funk - Schmalkalden</title>
 
   <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -194,7 +194,7 @@
 
   <!-- Top Bar -->
   <div class="top-bar">
-    <div class="agent-title">🌐 P2P Agenten-Netzwerk</div>
+    <div class="agent-title">🌐 Agenten-Netzwerk Live</div>
     <div class="top-right">
       <div class="timer">⏳ <span id="countdown">03:00:00</span></div>
       <button class="btn-dark" onclick="toggleDarkMode()">🌙</button>
@@ -206,26 +206,26 @@
     <div id="map"></div>
 
     <div class="control-panel">
-      <div id="statusStatus" class="status-msg">Tippe auf "Netzwerk Starten", um dich mit anderen zu verbinden.</div>
+      <div id="statusStatus" class="status-msg">Tippe auf "Live-Netzwerk Starten".</div>
       
       <div id="chatMessages" class="chat-box">
-        <div class="chat-msg"><i>System: Bereit zum Verbinden.</i></div>
+        <div class="chat-msg"><i>System: Funk-Netzwerk bereit.</i></div>
       </div>
 
       <div class="chat-input-row">
-        <input type="text" id="chatInput" class="chat-input" placeholder="Nachricht an das Team..." onkeypress="handleKey(event)">
+        <input type="text" id="chatInput" class="chat-input" placeholder="Nachricht an andere Agenten..." onkeypress="handleKey(event)">
         <button class="btn-action" onclick="sendChat()">Senden</button>
       </div>
 
-      <button id="startBtn" class="btn-action btn-success" onclick="startP2PNetwork()">📡 P2P Netzwerk & GPS Starten</button>
+      <button id="startBtn" class="btn-action btn-success" onclick="startNetwork()">📡 Live-Netzwerk & GPS Starten</button>
       <button id="unlockBtn" class="btn-action" style="display:none;" onclick="unlockCodePrompt()">🔓 Code am Ziel eingeben</button>
     </div>
   </div>
 
   <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <!-- PeerJS für direkte Handy-zu-Handy Verbindung -->
-  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <!-- MQTT.js für sicheren Live-Datenaustausch über HTTPS -->
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
   <!-- Canvas Confetti -->
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.5.1/dist/confetti.browser.min.js"></script>
 
@@ -266,7 +266,7 @@
     
     let map, myMarker;
     let agentId = 'Agent-' + Math.floor(Math.random() * 900 + 100);
-    let peer, connections = {};
+    let mqttClient;
     let otherMarkers = {};
 
     function initMap() {
@@ -276,60 +276,36 @@
       L.marker([TARGET_LAT, TARGET_LNG]).addTo(map).bindPopup('<b>🎯 Ziel</b>');
     }
 
-    function startP2PNetwork() {
+    function startNetwork() {
       document.getElementById('startBtn').style.display = 'none';
-      document.getElementById('statusStatus').innerText = `Initialisiere Agent ${agentId}...`;
+      document.getElementById('statusStatus').innerText = `Verbinde als ${agentId}...`;
 
-      // PeerJS ID festlegen (Präfix damit alle im selben virtuellen Raum landen: "schmalkalden-schnitzeljagd-")
-      peer = new Peer('smk-agent-' + Math.floor(Math.random() * 90000 + 10000));
+      // Sichere verschlüsselte MQTT-Verbindung über WSS (läuft fehlerfrei auf GitHub Pages)
+      mqttClient = mqtt.connect('wss://broker.hivemq.com:8884/mqtt');
 
-      peer.on('open', (id) => {
-        document.getElementById('statusStatus').innerText = `Online als ${agentId}. Verbinde mit Mitspielern...`;
-        appendSystemMessage(`Eure Agenten-ID: ${agentId}`);
+      mqttClient.on('connect', function () {
+        document.getElementById('statusStatus').innerText = `Verbunden! Suche andere Agenten...`;
+        appendSystemMessage(`Funkkanal verbunden.`);
         
-        // Versuche sich automatisch mit anderen Agenten zu verbinden (z.B. Test-IDs eingeben oder Raum scannen)
-        connectToTeam();
-      });
+        mqttClient.subscribe('schmalkalden/schnitzeljagd/live');
 
-      peer.on('connection', (conn) => {
-        setupConnection(conn);
-      });
-
-      // GPS Tracking starten
-      if (navigator.geolocation) {
-        navigator.geolocation.watchPosition(updateGPS, () => {}, { enableHighAccuracy: true });
-      }
-    }
-
-    // Da man bei P2P die IDs der anderen Handys kennen muss, fragen wir beim Start kurz nach der ID des Teams oder nutzen einen festen Master
-    function connectToTeam() {
-      const targetId = prompt("Gib die Agenten-ID eines Mitspielers ein (oder abbrechen, um als Start-Peer zu warten):", "");
-      if (targetId && targetId.trim() !== "") {
-        const conn = peer.connect(targetId.trim());
-        setupConnection(conn);
-      } else {
-        appendSystemMessage("Warte auf andere Agenten, die sich verbinden...");
-      }
-    }
-
-    function setupConnection(conn) {
-      connections[conn.peer] = conn;
-
-      conn.on('open', () => {
-        appendSystemMessage(`Verbindung zu ${conn.peer} hergestellt!`);
-      });
-
-      conn.on('data', (data) => {
-        if (data.type === 'chat') {
-          appendChatMessage(data.sender, data.text);
-        } else if (data.type === 'gps') {
-          updateOtherAgentMarker(data.sender, data.lat, data.lng);
+        // GPS Tracking starten
+        if (navigator.geolocation) {
+          navigator.geolocation.watchPosition(updateGPS, () => {}, { enableHighAccuracy: true });
         }
       });
 
-      conn.on('close', () => {
-        delete connections[conn.peer];
-        appendSystemMessage(`Verbindung zu ${conn.peer} getrennt.`);
+      mqttClient.on('message', function (topic, message) {
+        try {
+          const data = JSON.parse(message.toString());
+          if (data.sender !== agentId) {
+            if (data.type === 'chat') {
+              appendChatMessage(data.sender, data.text);
+            } else if (data.type === 'pos') {
+              updateOtherAgentMarker(data.sender, data.lat, data.lng);
+            }
+          }
+        } catch(e) {}
       });
     }
 
@@ -338,15 +314,14 @@
       const text = input.value.trim();
       if (!text) return;
 
-      const payload = { type: 'chat', sender: agentId, text: text };
-      
-      // An alle verbundenen Peers senden
-      for (let peerId in connections) {
-        connections[peerId].send(payload);
+      if (mqttClient && mqttClient.connected) {
+        const payload = JSON.stringify({ type: 'chat', sender: agentId, text: text });
+        mqttClient.publish('schmalkalden/schnitzeljagd/live', payload);
+        appendChatMessage("Ich (" + agentId + ")", text);
+        input.value = '';
+      } else {
+        alert("Funk noch nicht verbunden!");
       }
-
-      appendChatMessage("Ich (" + agentId + ")", text);
-      input.value = '';
     }
 
     function handleKey(e) {
@@ -377,16 +352,16 @@
       const lng = position.coords.longitude;
 
       if (!myMarker) {
-        myMarker = L.marker([lat, lng]).addTo(map).bindPopup("Mein Standort").openPopup();
+        myMarker = L.marker([lat, lng]).addTo(map).bindPopup(`<b>Ich (${agentId})</b>`).openPopup();
         map.setView([lat, lng], 17);
       } else {
         myMarker.setLatLng([lat, lng]);
       }
 
-      // Eigene GPS-Daten an alle verbundenen Peers senden
-      const payload = { type: 'gps', sender: agentId, lat: lat, lng: lng };
-      for (let peerId in connections) {
-        connections[peerId].send(payload);
+      // Eigene Position an alle anderen Agenten senden
+      if (mqttClient && mqttClient.connected) {
+        const payload = JSON.stringify({ type: 'pos', sender: agentId, lat: lat, lng: lng });
+        mqttClient.publish('schmalkalden/schnitzeljagd/live', payload);
       }
 
       const dist = getDistanceInMeters(lat, lng, TARGET_LAT, TARGET_LNG);
@@ -401,8 +376,8 @@
         otherMarkers[id] = L.marker([lat, lng], {
           icon: L.divIcon({
             className: 'agent-tag',
-            html: `<div style="background:#ef4444; color:white; padding:2px 6px; border-radius:10px; font-size:10px; font-weight:bold; white-space:nowrap;">👤 ${id}</div>`,
-            iconSize: [60, 20]
+            html: `<div style="background:#ef4444; color:white; padding:2px 8px; border-radius:12px; font-size:11px; font-weight:bold; white-space:nowrap; box-shadow: 0 2px 6px rgba(0,0,0,0.3);">👤 ${id}</div>`,
+            iconSize: [70, 24]
           })
         }).addTo(map);
       } else {
