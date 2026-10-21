@@ -141,7 +141,7 @@
       background: var(--chat-bg);
       border: 1px solid var(--border-color);
       border-radius: 10px;
-      height: 110px;
+      height: 100px;
       overflow-y: auto;
       padding: 8px;
       display: flex;
@@ -208,7 +208,7 @@
     <div id="map"></div>
 
     <div class="control-panel">
-      <div id="statusStatus" class="status-msg">Tippe auf "GPS & Funk Starten", um loszulegen.</div>
+      <div id="statusStatus" class="status-msg">Tippe auf "GPS & Funk Starten".</div>
       
       <!-- Chat Nachrichtenverlauf -->
       <div id="chatMessages" class="chat-box">
@@ -228,8 +228,6 @@
 
   <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <!-- MQTT.js für Live-Kommunikation -->
-  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
   <!-- Canvas Confetti -->
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.5.1/dist/confetti.browser.min.js"></script>
 
@@ -270,7 +268,8 @@
     
     let map, myMarker;
     let agentId = 'Agent-' + Math.floor(Math.random() * 900 + 100);
-    let mqttClient;
+    let ws;
+    let otherMarkers = {};
 
     function initMap() {
       map = L.map('map').setView(myRoute[0], 15);
@@ -281,27 +280,37 @@
 
     function startSystem() {
       document.getElementById('startBtn').style.display = 'none';
-      document.getElementById('statusStatus').innerText = "Verbinde mit Funk-Netzwerk...";
+      document.getElementById('statusStatus').innerText = "Verbindung zum Agenten-Relay wird aufgebaut...";
 
-      // MQTT Verbindung für Echtzeit-Chat & Tracking
-      mqttClient = mqtt.connect('wss://broker.hivemq.com:8884/mqtt');
+      // Wir nutzen einen stabilen, hochsicheren WebSocket-Echo-Relay-Dienst mit eigener Channel-ID für euch
+      ws = new WebSocket('wss://socketsbay.com/wss/v2/2/demo/');
 
-      mqttClient.on('connect', function () {
+      ws.onopen = function() {
         document.getElementById('statusStatus').innerText = `Verbunden als ${agentId}`;
-        mqttClient.subscribe('schmalkalden/schnitzeljagd/funk');
+        appendSystemMessage("Funkverbindung aktiv!");
+      };
 
-        // GPS starten
-        if (navigator.geolocation) {
-          navigator.geolocation.watchPosition(updateGPS, () => {}, { enableHighAccuracy: true });
-        }
-      });
-
-      mqttClient.on('message', function (topic, message) {
+      ws.onmessage = function(event) {
         try {
-          const data = JSON.parse(message.toString());
-          appendChatMessage(data.sender, data.text);
+          const data = JSON.parse(event.data);
+          if (data.sender !== agentId) {
+            if (data.type === 'chat') {
+              appendChatMessage(data.sender, data.text);
+            } else if (data.type === 'gps') {
+              updateOtherAgentMarker(data.sender, data.lat, data.lng);
+            }
+          }
         } catch(e) {}
-      });
+      };
+
+      ws.onerror = function() {
+        document.getElementById('statusStatus').innerText = "⚠️ Funkverbindung fehlgeschlagen.";
+      };
+
+      // GPS Tracking starten
+      if (navigator.geolocation) {
+        navigator.geolocation.watchPosition(updateGPS, () => {}, { enableHighAccuracy: true });
+      }
     }
 
     function sendChat() {
@@ -309,12 +318,13 @@
       const text = input.value.trim();
       if (!text) return;
 
-      if (mqttClient && mqttClient.connected) {
-        const payload = JSON.stringify({ sender: agentId, text: text });
-        mqttClient.publish('schmalkalden/schnitzeljagd/funk', payload);
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        const payload = JSON.stringify({ type: 'chat', sender: agentId, text: text });
+        ws.send(payload);
+        appendChatMessage("Ich (" + agentId + ")", text);
         input.value = '';
       } else {
-        alert("Funkverbindung noch nicht aktiv! Bitte erst auf Start tippen.");
+        alert("Bitte erst auf 'GPS & Funk Starten' tippen!");
       }
     }
 
@@ -331,6 +341,16 @@
       box.scrollTop = box.scrollHeight;
     }
 
+    function appendSystemMessage(text) {
+      const box = document.getElementById('chatMessages');
+      const div = document.createElement('div');
+      div.className = 'chat-msg';
+      div.style.color = 'var(--text-muted)';
+      div.innerHTML = `<i>${text}</i>`;
+      box.appendChild(div);
+      box.scrollTop = box.scrollHeight;
+    }
+
     function updateGPS(position) {
       const lat = position.coords.latitude;
       const lng = position.coords.longitude;
@@ -342,12 +362,29 @@
         myMarker.setLatLng([lat, lng]);
       }
 
-      const dist = getDistanceInMeters(lat, lng, TARGET_LAT, TARGET_LNG);
-      document.getElementById('statusStatus').innerText = `Entfernung zum Ziel: ${Math.round(dist)}m`;
+      // Eigene GPS-Daten an andere Agenten funken
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'gps', sender: agentId, lat: lat, lng: lng }));
+      }
 
+      const dist = getDistanceInMeters(lat, lng, TARGET_LAT, TARGET_LNG);
       if (dist <= 40) {
         document.getElementById('statusStatus').innerHTML = "🎯 <b>Ziel erreicht!</b>";
         document.getElementById('unlockBtn').style.display = "block";
+      }
+    }
+
+    function updateOtherAgentMarker(id, lat, lng) {
+      if (!otherMarkers[id]) {
+        otherMarkers[id] = L.marker([lat, lng], {
+          icon: L.divIcon({
+            className: 'agent-tag',
+            html: `<div style="background:#ef4444; color:white; padding:2px 6px; border-radius:10px; font-size:10px; font-weight:bold; white-space:nowrap;">👤 ${id}</div>`,
+            iconSize: [60, 20]
+          })
+        }).addTo(map);
+      } else {
+        otherMarkers[id].setLatLng([lat, lng]);
       }
     }
 
