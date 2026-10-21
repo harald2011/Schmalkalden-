@@ -58,7 +58,7 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 0 16px;
+      padding: 0 12px;
       box-sizing: border-box;
       z-index: 10000;
       box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05);
@@ -67,29 +67,29 @@
     .top-left {
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 8px;
     }
 
     .top-bar h1 {
       margin: 0;
-      font-size: 15px;
+      font-size: 14px;
       font-weight: 700;
       color: var(--text-main);
     }
 
     .navbar-timer {
-      font-size: 14px;
+      font-size: 13px;
       font-weight: 600;
       color: var(--primary);
       background: var(--primary-light);
-      padding: 6px 10px;
+      padding: 4px 8px;
       border-radius: 20px;
       border: 1px solid var(--border-color);
     }
 
     .top-buttons {
       display: flex;
-      gap: 8px;
+      gap: 6px;
     }
 
     /* View Container */
@@ -226,7 +226,7 @@
       color: white;
       font-size: 12px;
       font-weight: 600;
-      padding: 8px 12px;
+      padding: 6px 10px;
       border: none;
       border-radius: 8px;
       cursor: pointer;
@@ -235,6 +235,7 @@
     .print-btn { background-color: var(--primary); }
     .dark-btn { background-color: #e11d48; }
     .gps-btn { background-color: #059669; }
+    .center-btn { background-color: #d97706; }
 
     body.dark-mode .leaflet-tile-container {
       filter: invert(90%) hue-rotate(180deg) brightness(95%) contrast(90%);
@@ -246,13 +247,13 @@
   <!-- Top-Bar -->
   <div class="top-bar">
     <div class="top-left">
-      <h1>🤫 Mission Schmalkalden</h1>
+      <h1>🤫 Mission</h1>
       <div class="navbar-timer">⏳ <span id="countdown">03:00:00</span></div>
     </div>
     <div class="top-buttons">
-      <button class="btn gps-btn" onclick="startGPS()">📡 GPS Starten</button>
+      <button class="btn center-btn" onclick="centerOnCastle()">🏰 Schloss</button>
+      <button class="btn gps-btn" onclick="startGPS()">📡 GPS</button>
       <button class="btn dark-btn" onclick="toggleDarkMode()">🌙</button>
-      <button class="btn print-btn" onclick="window.print()">🖨️</button>
     </div>
   </div>
 
@@ -282,15 +283,15 @@
           </ol>
 
           <div class="gps-widget">
-            <span id="gpsStatus">📡 Bitte oben auf "GPS Starten" tippen.</span>
+            <span id="gpsStatus">📡 Bitte oben auf "GPS" tippen.</span>
           </div>
 
           <button id="unlockBtn" class="btn-action" disabled onclick="unlockStage2Prompt()">
-            🔒 QR-Code am Schloss scannen (Geofence gesperrt)
+            🔒 Code am Schloss eingeben (Gesperrt)
           </button>
           
           <p style="text-align: center; margin-top: 12px;">
-            <small><a href="#" onclick="manualOverride(event)" style="color: var(--text-muted);">[Code manuell eingeben bei GPS-Problemen]</a></small>
+            <small><a href="#" onclick="manualOverride(event)" style="color: var(--text-muted);">[Notfall: Code manuell eingeben]</a></small>
           </p>
         </div>
       </div>
@@ -324,22 +325,32 @@
     let gpsWatchId = null;
 
     function initMap() {
-      map = L.map('map').setView([50.7222, 10.4533], 15);
+      // Karte zentriert auf Schloss Wilhelmsburg
+      map = L.map('map').setView([TARGET_LAT, TARGET_LNG], 16);
 
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 19,
         attribution: '© OpenStreetMap'
       }).addTo(map);
 
+      // Schloss-Marker + Ziel-Radius
       targetMarker = L.marker([TARGET_LAT, TARGET_LNG]).addTo(map)
         .bindPopup('<b>🏰 Schloss Wilhelmsburg</b><br>Etappenziel').openPopup();
 
       L.circle([TARGET_LAT, TARGET_LNG], {
         color: '#2563eb',
         fillColor: '#3b82f6',
-        fillOpacity: 0.15,
+        fillOpacity: 0.2,
         radius: GEOFENCE_RADIUS_METERS
       }).addTo(map);
+    }
+
+    function centerOnCastle() {
+      if (map) {
+        switchView('map');
+        map.setView([TARGET_LAT, TARGET_LNG], 17);
+        targetMarker.openPopup();
+      }
     }
 
     function startGPS() {
@@ -367,9 +378,12 @@
       const accuracy = position.coords.accuracy;
 
       if (!userMarker) {
-        userMarker = L.marker([lat, lng]).addTo(map).bindPopup("Dein echter Standort");
-        userAccuracyCircle = L.circle([lat, lng], { radius: accuracy, color: '#059669', fillColor: '#10b981', fillOpacity: 0.2 }).addTo(map);
-        map.setView([lat, lng], 17);
+        userMarker = L.marker([lat, lng]).addTo(map).bindPopup("Dein aktueller Standort");
+        userAccuracyCircle = L.circle([lat, lng], { radius: accuracy, color: '#059669', fillColor: '#10b981', fillOpacity: 0.25 }).addTo(map);
+        
+        // Passt die Karte so an, dass man Schloss UND eigenen Standort sieht
+        const bounds = L.latLngBounds([[lat, lng], [TARGET_LAT, TARGET_LNG]]);
+        map.fitBounds(bounds, { padding: [50, 50] });
       } else {
         userMarker.setLatLng([lat, lng]);
         userAccuracyCircle.setLatLng([lat, lng]);
@@ -384,7 +398,7 @@
         statusEl.innerHTML = `🎯 <b>Du bist am Schloss angekommen!</b> (${Math.round(distance)}m entfernt)`;
         statusEl.style.color = "var(--success)";
         unlockBtn.disabled = false;
-        unlockBtn.innerHTML = "📷 QR-Code scannen / Code eingeben";
+        unlockBtn.innerHTML = "🔓 Code eingeben (SCHLOSS2026)";
       } else {
         statusEl.innerHTML = `📏 Noch <b>${Math.round(distance)} Meter</b> bis zum Schloss!`;
         statusEl.style.color = "var(--text-main)";
@@ -394,15 +408,7 @@
     }
 
     function onGPSError(err) {
-      let msg = "⚠️ GPS-Fehler: ";
-      if (err.code === 1) {
-        msg += "Standortzugriff vom Browser blockiert. Hinweis: Auf Smartphones funktioniert GPS meist nur über eine sichere Verbindung (HTTPS) oder wenn die Datei direkt auf einem Server liegt.";
-      } else if (err.code === 2) {
-        msg += "Standort konnte nicht ermittelt werden. Ist GPS am Gerät an?";
-      } else {
-        msg += "Zeitüberschreitung beim GPS-Empfang.";
-      }
-      document.getElementById('gpsStatus').innerHTML = msg;
+      document.getElementById('gpsStatus').innerHTML = "⚠️ GPS-Fehler: Bitte vergewissere dich, dass Standorte auf deinem Smartphone erlaubt sind.";
     }
 
     function getDistanceInMeters(lat1, lon1, lat2, lon2) {
