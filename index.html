@@ -3,7 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>GPS Kompass - Schnitzeljagd</title>
+  <title>Agenten-Netzwerk - Live Tracking</title>
+
+  <!-- Leaflet CSS für die Live-Karte -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 
   <style>
     :root {
@@ -11,20 +14,19 @@
       --primary-light: #eff6ff;
       --success: #16a34a;
       --warning: #d97706;
-      --bg-light: #f8fafc;
+      --bg-light: #f1f5f9;
       --card-bg: #ffffff;
       --text-main: #1e293b;
       --text-muted: #64748b;
       --border-color: #e2e8f0;
     }
 
-    /* Nachtmodus: Tiefschwarz & Rot */
     body.dark-mode {
-      --primary: #ef4444; /* Rot für perfekte Nachtsicht */
+      --primary: #ef4444;
       --primary-light: rgba(239, 68, 68, 0.15);
       --success: #22c55e;
       --warning: #f59e0b;
-      --bg-light: #000000; /* Tiefschwarz */
+      --bg-light: #000000;
       --card-bg: #111111;
       --text-main: #f8fafc;
       --text-muted: #94a3b8;
@@ -41,13 +43,11 @@
       color: var(--text-main);
       display: flex;
       flex-direction: column;
-      align-items: center;
-      justify-content: space-between;
       box-sizing: border-box;
       transition: background 0.3s ease, color 0.3s ease;
+      overflow: hidden;
     }
 
-    /* Top Bar */
     .top-bar {
       width: 100%;
       height: 60px;
@@ -56,13 +56,13 @@
       align-items: center;
       justify-content: space-between;
       border-bottom: 1px solid var(--border-color);
-      box-sizing: border-box;
       background: var(--card-bg);
+      z-index: 1000;
     }
 
-    .top-bar h1 {
-      font-size: 16px;
-      margin: 0;
+    .agent-title {
+      font-size: 14px;
+      font-weight: 700;
     }
 
     .top-right {
@@ -72,7 +72,7 @@
     }
 
     .timer {
-      font-size: 13px;
+      font-size: 12px;
       font-weight: bold;
       color: var(--primary);
       background: var(--primary-light);
@@ -93,109 +93,63 @@
       justify-content: center;
     }
 
-    /* Main Navigation Display */
-    .nav-container {
+    /* Container für Karte & Chat Tabs */
+    .main-view {
+      flex: 1;
+      position: relative;
       display: flex;
       flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      flex: 1;
-      width: 100%;
-      padding: 20px;
-      box-sizing: border-box;
     }
 
-    /* Radar / Compass Outer Ring */
-    .compass-ring {
-      width: 240px;
-      height: 240px;
-      border-radius: 50%;
-      border: 4px solid var(--primary-light);
+    #map {
+      width: 100%;
+      height: 100%;
+      position: absolute;
+      top: 0;
+      left: 0;
+    }
+
+    /* Floating Panel unten für Steuerung & Status */
+    .control-panel {
+      position: absolute;
+      bottom: 20px;
+      left: 15px;
+      right: 15px;
       background: var(--card-bg);
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      position: relative;
-      margin-bottom: 30px;
-    }
-
-    /* Rotating Arrow */
-    .arrow {
-      width: 0;
-      height: 0;
-      border-left: 25px solid transparent;
-      border-right: 25px solid transparent;
-      border-bottom: 80px solid var(--primary);
-      transform-origin: 50% 80%;
-      transition: transform 0.2s ease-out;
-    }
-
-    /* Distance Display */
-    .distance-box {
-      text-align: center;
-    }
-
-    .distance-value {
-      font-size: 42px;
-      font-weight: 800;
-      color: var(--primary);
-      margin: 0;
-    }
-
-    .distance-unit {
-      font-size: 16px;
-      color: var(--text-muted);
-      font-weight: 600;
-    }
-
-    .status-text {
-      font-size: 14px;
-      margin-top: 8px;
-      color: var(--text-muted);
-      text-align: center;
-    }
-
-    /* Controls Bottom */
-    .controls {
-      width: 100%;
-      max-width: 400px;
-      padding: 20px;
-      box-sizing: border-box;
+      padding: 16px;
+      border-radius: 16px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+      z-index: 1000;
+      border: 1px solid var(--border-color);
       display: flex;
       flex-direction: column;
       gap: 10px;
     }
 
-    .btn {
-      width: 100%;
-      padding: 14px;
+    .status-msg {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-align: center;
+    }
+
+    .btn-action {
+      background: var(--primary);
+      color: white;
       border: none;
-      border-radius: 12px;
-      font-size: 15px;
+      padding: 12px;
+      border-radius: 10px;
+      font-size: 14px;
       font-weight: 600;
       cursor: pointer;
-      color: white;
-      background: var(--primary);
-      box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
+      box-shadow: 0 4px 12px rgba(37,99,235,0.2);
+      width: 100%;
     }
 
-    .btn:disabled {
-      background: var(--text-muted);
-      opacity: 0.5;
-      box-shadow: none;
-    }
+    .btn-success { background: var(--success); }
 
-    .btn-gps {
-      background: var(--success);
-      box-shadow: 0 4px 12px rgba(22, 163, 74, 0.2);
-    }
-
-    .btn-sim {
-      background: var(--warning);
-      font-size: 12px;
-      padding: 8px;
-      color: #fff;
+    body.dark-mode .leaflet-tile-container {
+      filter: invert(90%) hue-rotate(180deg) brightness(95%) contrast(90%);
     }
   </style>
 </head>
@@ -203,179 +157,158 @@
 
   <!-- Top Bar -->
   <div class="top-bar">
-    <h1>🧭 Kompass</h1>
+    <div class="agent-title">🌐 Agenten-Netzwerk Live</div>
     <div class="top-right">
       <div class="timer">⏳ <span id="countdown">03:00:00</span></div>
       <button class="btn-dark" onclick="toggleDarkMode()">🌙</button>
     </div>
   </div>
 
-  <!-- Center Arrow Area -->
-  <div class="nav-container">
-    <div class="compass-ring">
-      <div id="arrow" class="arrow"></div>
-    </div>
+  <!-- Map View -->
+  <div class="main-view">
+    <div id="map"></div>
 
-    <div class="distance-box">
-      <h2 id="distance" class="distance-value">---</h2>
-      <div class="distance-unit">Meter zum Ziel</div>
+    <!-- Control Panel -->
+    <div class="control-panel">
+      <div id="statusText" class="status-msg">Tippe auf "Verbindung starten", um dein Signal zu teilen.</div>
+      <button id="startBtn" class="btn-action btn-success" onclick="initAgentNetwork()">📡 Live-Tracking & GPS Starten</button>
+      <button id="unlockBtn" class="btn-action" style="display:none;" onclick="unlockCodePrompt()">🔓 Code am Ziel eingeben</button>
     </div>
-
-    <div id="statusText" class="status-text">📡 Tippe auf "GPS Starten", um die Navigation zu beginnen.</div>
   </div>
 
-  <!-- Bottom Buttons -->
-  <div class="controls">
-    <button class="btn btn-gps" onclick="startNavigation()">📡 GPS Starten</button>
-    <button id="unlockBtn" class="btn" disabled onclick="unlockCodePrompt()">🔒 Code am Ziel eingeben</button>
-    <button class="btn btn-sim" onclick="simulateArrival()">🛠️ Testmodus: Ans Ziel teleportieren</button>
-  </div>
-
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- MQTT.js für den Live-Datenaustausch der Standorte -->
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
   <!-- Canvas Confetti -->
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.5.1/dist/confetti.browser.min.js"></script>
 
   <script>
     const myRoute = [
-      [50.719550, 10.464236],
-      [50.720086, 10.464925],
-      [50.720178, 10.464703],
-      [50.720295, 10.464453],
-      [50.720552, 10.464030],
-      [50.720777, 10.463820],
-      [50.721236, 10.463372],
-      [50.721283, 10.462573],
-      [50.721419, 10.461125],
-      [50.721606, 10.459607],
-      [50.721626, 10.459151],
-      [50.721742, 10.458056],
-      [50.721732, 10.457761],
-      [50.721674, 10.457461],
-      [50.721633, 10.457321],
-      [50.721840, 10.457273],
-      [50.722166, 10.457488],
-      [50.722340, 10.458024],
-      [50.722408, 10.458952],
-      [50.722452, 10.459542],
-      [50.722499, 10.459591],
-      [50.722598, 10.459510],
-      [50.722679, 10.458984],
-      [50.723219, 10.456828],
-      [50.723369, 10.456667],
-      [50.723542, 10.456581],
-      [50.723613, 10.456506],
-      [50.723722, 10.456361],
-      [50.723807, 10.456350],
-      [50.723919, 10.456318],
-      [50.723926, 10.456157],
-      [50.723949, 10.456071],
-      [50.724038, 10.456157],
-      [50.724048, 10.455905],
-      [50.724180, 10.455723],
-      [50.724659, 10.454280],
-      [50.724632, 10.453926],
-      [50.724615, 10.453835],
-      [50.725094, 10.452788],
-      [50.725793, 10.451995],
-      [50.726004, 10.451796],
-      [50.726272, 10.451726],
-      [50.726442, 10.451721],
-      [50.726934, 10.451667],
-      [50.727420, 10.451437],
-      [50.727705, 10.451227],
-      [50.727838, 10.451201],
-      [50.728816, 10.451426],
-      [50.729057, 10.451496],
-      [50.729705, 10.450847],
-      [50.730007, 10.450493],
-      [50.730496, 10.449999],
-      [50.730642, 10.449945],
-      [50.730765, 10.449833],
-      [50.730928, 10.449747],
-      [50.731155, 10.449661],
-      [50.731315, 10.449602],
-      [50.731515, 10.449532],
-      [50.731739, 10.449452],
-      [50.731800, 10.449479],
-      [50.731987, 10.449591],
-      [50.732225, 10.449607],
-      [50.732938, 10.449216],
-      [50.733124, 10.449033],
-      [50.733114, 10.448878],
-      [50.733152, 10.448518],
-      [50.733135, 10.448164],
-      [50.732887, 10.447403],
-      [50.732819, 10.447150],
-      [50.732198, 10.445369],
-      [50.731895, 10.444677],
-      [50.731488, 10.444087],
-      [50.731328, 10.443857],
-      [50.731770, 10.433471]
+      [50.719550, 10.464236], [50.720086, 10.464925], [50.720178, 10.464703],
+      [50.720295, 10.464453], [50.720552, 10.464030], [50.720777, 10.463820],
+      [50.721236, 10.463372], [50.721283, 10.462573], [50.721419, 10.461125],
+      [50.721606, 10.459607], [50.721626, 10.459151], [50.721742, 10.458056],
+      [50.721732, 10.457761], [50.721674, 10.457461], [50.721633, 10.457321],
+      [50.721840, 10.457273], [50.722166, 10.457488], [50.722340, 10.458024],
+      [50.722408, 10.458952], [50.722452, 10.459542], [50.722499, 10.459591],
+      [50.722598, 10.459510], [50.722679, 10.458984], [50.723219, 10.456828],
+      [50.723369, 10.456667], [50.723542, 10.456581], [50.723613, 10.456506],
+      [50.723722, 10.456361], [50.723807, 10.456350], [50.723919, 10.456318],
+      [50.723926, 10.456157], [50.723949, 10.456071], [50.724038, 10.456157],
+      [50.724048, 10.455905], [50.724180, 10.455723], [50.724659, 10.454280],
+      [50.724632, 10.453926], [50.724615, 10.453835], [50.725094, 10.452788],
+      [50.725793, 10.451995], [50.726004, 10.451796], [50.726272, 10.451726],
+      [50.726442, 10.451721], [50.726934, 10.451667], [50.727420, 10.451437],
+      [50.727705, 10.451227], [50.727838, 10.451201], [50.728816, 10.451426],
+      [50.729057, 10.451496], [50.729705, 10.450847], [50.730007, 10.450493],
+      [50.730496, 10.449999], [50.730642, 10.449945], [50.730765, 10.449833],
+      [50.730928, 10.449747], [50.731155, 10.449661], [50.731315, 10.449602],
+      [50.731515, 10.449532], [50.731739, 10.449452], [50.731800, 10.449479],
+      [50.731987, 10.449591], [50.732225, 10.449607], [50.732938, 10.449216],
+      [50.733124, 10.449033], [50.733114, 10.448878], [50.733152, 10.448518],
+      [50.733135, 10.448164], [50.732887, 10.447403], [50.732819, 10.447150],
+      [50.732198, 10.445369], [50.731895, 10.444677], [50.731488, 10.444087],
+      [50.731328, 10.443857], [50.731372, 10.443749], [50.731172, 10.443020],
+      [50.731050, 10.442580], [50.730649, 10.440531], [50.730445, 10.439361],
+      [50.730344, 10.439072], [50.731063, 10.437977], [50.731498, 10.436990],
+      [50.731783, 10.436025], [50.731743, 10.434952], [50.731770, 10.433471]
     ];
 
     const TARGET_LAT = myRoute[myRoute.length - 1][0];
     const TARGET_LNG = myRoute[myRoute.length - 1][1];
-    const GEOFENCE_RADIUS_METERS = 50;
+    
+    let map;
+    let myMarker;
+    let otherAgentMarkers = {}; // Speichert Marker von anderen Spielern
+    let agentId = 'Agent-' + Math.floor(Math.random() * 9000 + 1000); // Zufällige Agenten-ID pro Gerät
+    let mqttClient;
 
-    let deviceHeading = 0;
-    let targetBearing = 0;
+    function initMap() {
+      map = L.map('map').setView(myRoute[0], 16);
 
-    function startNavigation() {
-      if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-        DeviceOrientationEvent.requestPermission().then(response => {
-          if (response === 'granted') {
-            window.addEventListener('deviceorientation', handleOrientation, true);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '© OpenStreetMap'
+      }).addTo(map);
+
+      // Route einzeichnen
+      L.polyline(myRoute, { color: '#2563eb', weight: 4, opacity: 0.7 }).addTo(map);
+
+      // Ziel-Marker
+      L.marker([TARGET_LAT, TARGET_LNG]).addTo(map).bindPopup('<b>🎯 Ziel / HQ</b>');
+    }
+
+    function initAgentNetwork() {
+      document.getElementById('startBtn').style.display = 'none';
+      document.getElementById('statusText').innerText = "Verbinde mit Agenten-Netzwerk...";
+
+      // MQTT Broker Verbindung (Öffentlicher Broker für Echtzeit-Daten)
+      mqttClient = mqtt.connect('wss://broker.hivemq.com:8884/mqtt');
+
+      mqttClient.on('connect', function () {
+        document.getElementById('statusText').innerText = `Verbunden als ${agentId}. Suche andere Agenten...`;
+        mqttClient.subscribe('schmalkalden/schnitzeljagd/agents');
+
+        // GPS Tracking starten
+        if (navigator.geolocation) {
+          navigator.geolocation.watchPosition(sendMyPosition, handleGPSäureError, {
+            enableHighAccuracy: true,
+            maximumAge: 1000,
+            timeout: 15000
+          });
+        }
+      });
+
+      mqttClient.on('message', function (topic, message) {
+        try {
+          const data = JSON.parse(message.toString());
+          if (data.id !== agentId) {
+            updateOtherAgent(data);
           }
-        });
+        } catch(e) {}
+      });
+    }
+
+    function sendMyPosition(position) {
+      const lat = position.coords.latitude;
+      const lng = position.coords.longitude;
+
+      // Eignen Marker aktualisieren
+      if (!myMarker) {
+        myMarker = L.marker([lat, lng]).addTo(map).bindPopup(`<b>Ich (${agentId})</b>`).openPopup();
+        map.setView([lat, lng], 16);
       } else {
-        window.addEventListener('deviceorientation', handleOrientation, true);
+        myMarker.setLatLng([lat, lng]);
       }
 
-      if (navigator.geolocation) {
-        navigator.geolocation.watchPosition(updatePosition, handleError, {
-          enableHighAccuracy: true,
-          maximumAge: 1000,
-          timeout: 15000
-        });
-        document.getElementById('statusText').innerText = "📡 GPS aktiv. Verfolge Standort...";
-      } else {
-        alert("GPS wird von diesem Browser nicht unterstützt.");
+      // Position an alle anderen Agenten senden
+      if (mqttClient && mqttClient.connected) {
+        const payload = JSON.stringify({ id: agentId, lat: lat, lng: lng });
+        mqttClient.publish('schmalkalden/schnitzeljagd/agents', payload);
+      }
+
+      // Ziel-Check
+      const dist = getDistanceInMeters(lat, lng, TARGET_LAT, TARGET_LNG);
+      if (dist <= 40) {
+        document.getElementById('statusText').innerHTML = "🎯 <b>Ziel erreicht!</b>";
+        document.getElementById('unlockBtn').style.display = "block";
       }
     }
 
-    function updatePosition(position) {
-      const userLat = position.coords.latitude;
-      const userLng = position.coords.longitude;
-
-      const distance = getDistanceInMeters(userLat, userLng, TARGET_LAT, TARGET_LNG);
-      document.getElementById('distance').innerText = Math.round(distance);
-
-      targetBearing = calculateBearing(userLat, userLng, TARGET_LAT, TARGET_LNG);
-      updateArrowDirection();
-
-      const unlockBtn = document.getElementById('unlockBtn');
-      if (distance <= GEOFENCE_RADIUS_METERS) {
-        document.getElementById('statusText').innerHTML = "🎯 <b>Du bist am Ziel angekommen!</b>";
-        document.getElementById('statusText').style.color = "var(--success)";
-        unlockBtn.disabled = false;
-        unlockBtn.innerHTML = "🔓 Code eingeben (SCHLOSS2026)";
+    function updateOtherAgent(data) {
+      if (!otherAgentMarkers[data.id]) {
+        // Neuen Marker für anderen Agenten erstellen (roter Pin)
+        otherAgentMarkers[data.id] = L.marker([data.lat, data.lng], {
+          icon: L.divIcon({
+            className: 'custom-agent-pin',
+            html: `<div style="background:#ef4444; color:white; padding:2px 6px; border-radius:10px; font-size:10px; font-weight:bold; white-space:nowrap;">👤 ${data.id}</div>`,
+            iconSize: [60, 20]
+          })
+        }).addTo(map);
       } else {
-        document.getElementById('statusText').innerHTML = `🏃‍♂️ Folge dem Pfeil. Noch ${Math.round(distance)}m`;
-        unlockBtn.disabled = true;
+        otherAgentMarkers[data.id].setLatLng([data.lat, data.lng]);
       }
-    }
-
-    function handleOrientation(event) {
-      if (event.webkitCompassHeading) {
-        deviceHeading = event.webkitCompassHeading;
-      } else if (event.alpha) {
-        deviceHeading = 360 - event.alpha;
-      }
-      updateArrowDirection();
-    }
-
-    function updateArrowDirection() {
-      const arrowDegree = targetBearing - deviceHeading;
-      document.getElementById('arrow').style.transform = `rotate(${arrowDegree}deg)`;
     }
 
     function getDistanceInMeters(lat1, lon1, lat2, lon2) {
@@ -386,22 +319,10 @@
       return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
     }
 
-    function calculateBearing(lat1, lon1, lat2, lon2) {
-      const φ1 = lat1 * Math.PI/180, φ2 = lat2 * Math.PI/180;
-      const Δλ = (lon2-lon1) * Math.PI/180;
-      const y = Math.sin(Δλ) * Math.cos(φ2);
-      const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
-      return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
-    }
-
-    function simulateArrival() {
-      updatePosition({ coords: { latitude: TARGET_LAT, longitude: TARGET_LNG } });
-    }
-
     function unlockCodePrompt() {
-      const code = prompt("Gib den Code ein, den du am Ziel gefunden hast:");
+      const code = prompt("Gib den Code ein:");
       if (code && code.trim().toUpperCase() === "SCHLOSS2026") {
-        confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+        confetti({ particleCount: 150, spread: 90, origin: { y: 0.6 } });
         alert("🎉 Mission erfolgreich abgeschlossen!");
       } else {
         alert("Falscher Code!");
@@ -412,16 +333,19 @@
       document.body.classList.toggle('dark-mode');
     }
 
-    function handleError(err) {
-      document.getElementById('statusText').innerText = "⚠️ GPS-Zugriff verweigert oder kein Signal.";
+    function handleGPSäureError() {
+      document.getElementById('statusText').innerText = "⚠️ GPS-Signal wird gesucht...";
     }
 
+    // Countdown Timer
     var totalSeconds = 3 * 60 * 60;
     setInterval(() => {
       var h = Math.floor(totalSeconds / 3600), m = Math.floor((totalSeconds % 3600) / 60), s = totalSeconds % 60;
       document.getElementById("countdown").textContent = (h<10?"0"+h:h)+":"+(m<10?"0"+m:m)+":"+(s<10?"0"+s:s);
       if (totalSeconds > 0) totalSeconds--;
     }, 1000);
+
+    window.onload = initMap;
   </script>
 </body>
 </html>
