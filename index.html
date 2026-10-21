@@ -316,24 +316,24 @@
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.5.1/dist/confetti.browser.min.js"></script>
 
   <script>
-    // Zielkoordinaten Schloss Wilhelmsburg Schmalkalden
-    const TARGET_LAT = 50.7222;
-    const TARGET_LNG = 10.4533;
+    // Exakte Zielkoordinaten für Schloss Wilhelmsburg Schmalkalden
+    const TARGET_LAT = 50.7248;
+    const TARGET_LNG = 10.4561;
     const GEOFENCE_RADIUS_METERS = 50;
 
     let map, userMarker, userAccuracyCircle, targetMarker;
     let gpsWatchId = null;
 
     function initMap() {
-      // Karte zentriert auf Schloss Wilhelmsburg
-      map = L.map('map').setView([TARGET_LAT, TARGET_LNG], 16);
+      // Karte zentriert direkt auf das Schloss Wilhelmsburg
+      map = L.map('map').setView([TARGET_LAT, TARGET_LNG], 17);
 
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 19,
         attribution: '© OpenStreetMap'
       }).addTo(map);
 
-      // Schloss-Marker + Ziel-Radius
+      // Schloss-Marker + 50m Geofence-Radius
       targetMarker = L.marker([TARGET_LAT, TARGET_LNG]).addTo(map)
         .bindPopup('<b>🏰 Schloss Wilhelmsburg</b><br>Etappenziel').openPopup();
 
@@ -381,7 +381,7 @@
         userMarker = L.marker([lat, lng]).addTo(map).bindPopup("Dein aktueller Standort");
         userAccuracyCircle = L.circle([lat, lng], { radius: accuracy, color: '#059669', fillColor: '#10b981', fillOpacity: 0.25 }).addTo(map);
         
-        // Passt die Karte so an, dass man Schloss UND eigenen Standort sieht
+        // Passt die Karte so an, dass sowohl der Standort als auch das Schloss sichtbar sind
         const bounds = L.latLngBounds([[lat, lng], [TARGET_LAT, TARGET_LNG]]);
         map.fitBounds(bounds, { padding: [50, 50] });
       } else {
@@ -408,7 +408,7 @@
     }
 
     function onGPSError(err) {
-      document.getElementById('gpsStatus').innerHTML = "⚠️ GPS-Fehler: Bitte vergewissere dich, dass Standorte auf deinem Smartphone erlaubt sind.";
+      document.getElementById('gpsStatus').innerHTML = "⚠️ GPS-Fehler: Bitte erlaube den Standortzugriff auf deinem Smartphone.";
     }
 
     function getDistanceInMeters(lat1, lon1, lat2, lon2) {
