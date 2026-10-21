@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Agenten-Netzwerk - Live Tracking</title>
+  <title>Agenten-Netzwerk - Schmalkalden</title>
 
-  <!-- Leaflet CSS für die Live-Karte -->
+  <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 
   <style>
@@ -93,7 +93,6 @@
       justify-content: center;
     }
 
-    /* Container für Karte & Chat Tabs */
     .main-view {
       flex: 1;
       position: relative;
@@ -109,7 +108,6 @@
       left: 0;
     }
 
-    /* Floating Panel unten für Steuerung & Status */
     .control-panel {
       position: absolute;
       bottom: 20px;
@@ -157,7 +155,7 @@
 
   <!-- Top Bar -->
   <div class="top-bar">
-    <div class="agent-title">🌐 Agenten-Netzwerk Live</div>
+    <div class="agent-title">🌐 Agenten-Navi Schmalkalden</div>
     <div class="top-right">
       <div class="timer">⏳ <span id="countdown">03:00:00</span></div>
       <button class="btn-dark" onclick="toggleDarkMode()">🌙</button>
@@ -168,18 +166,15 @@
   <div class="main-view">
     <div id="map"></div>
 
-    <!-- Control Panel -->
     <div class="control-panel">
-      <div id="statusText" class="status-msg">Tippe auf "Verbindung starten", um dein Signal zu teilen.</div>
-      <button id="startBtn" class="btn-action btn-success" onclick="initAgentNetwork()">📡 Live-Tracking & GPS Starten</button>
+      <div id="statusText" class="status-msg">Tippe auf "GPS Starten", um deine Position aufzuzeichnen.</div>
+      <button id="startBtn" class="btn-action btn-success" onclick="startGPS()">📡 GPS Tracking Starten</button>
       <button id="unlockBtn" class="btn-action" style="display:none;" onclick="unlockCodePrompt()">🔓 Code am Ziel eingeben</button>
     </div>
   </div>
 
   <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <!-- MQTT.js für den Live-Datenaustausch der Standorte -->
-  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
   <!-- Canvas Confetti -->
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.5.1/dist/confetti.browser.min.js"></script>
 
@@ -218,14 +213,10 @@
     const TARGET_LAT = myRoute[myRoute.length - 1][0];
     const TARGET_LNG = myRoute[myRoute.length - 1][1];
     
-    let map;
-    let myMarker;
-    let otherAgentMarkers = {}; // Speichert Marker von anderen Spielern
-    let agentId = 'Agent-' + Math.floor(Math.random() * 9000 + 1000); // Zufällige Agenten-ID pro Gerät
-    let mqttClient;
+    let map, myMarker;
 
     function initMap() {
-      map = L.map('map').setView(myRoute[0], 16);
+      map = L.map('map').setView(myRoute[0], 15);
 
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 19,
@@ -233,81 +224,44 @@
       }).addTo(map);
 
       // Route einzeichnen
-      L.polyline(myRoute, { color: '#2563eb', weight: 4, opacity: 0.7 }).addTo(map);
+      L.polyline(myRoute, { color: '#2563eb', weight: 5, opacity: 0.8 }).addTo(map);
 
       // Ziel-Marker
-      L.marker([TARGET_LAT, TARGET_LNG]).addTo(map).bindPopup('<b>🎯 Ziel / HQ</b>');
+      L.marker([TARGET_LAT, TARGET_LNG]).addTo(map).bindPopup('<b>🎯 Ziel</b>').openPopup();
     }
 
-    function initAgentNetwork() {
+    function startGPS() {
       document.getElementById('startBtn').style.display = 'none';
-      document.getElementById('statusText').innerText = "Verbinde mit Agenten-Netzwerk...";
+      document.getElementById('statusText').innerText = "Suche GPS-Signal...";
 
-      // MQTT Broker Verbindung (Öffentlicher Broker für Echtzeit-Daten)
-      mqttClient = mqtt.connect('wss://broker.hivemq.com:8884/mqtt');
-
-      mqttClient.on('connect', function () {
-        document.getElementById('statusText').innerText = `Verbunden als ${agentId}. Suche andere Agenten...`;
-        mqttClient.subscribe('schmalkalden/schnitzeljagd/agents');
-
-        // GPS Tracking starten
-        if (navigator.geolocation) {
-          navigator.geolocation.watchPosition(sendMyPosition, handleGPSäureError, {
-            enableHighAccuracy: true,
-            maximumAge: 1000,
-            timeout: 15000
-          });
-        }
-      });
-
-      mqttClient.on('message', function (topic, message) {
-        try {
-          const data = JSON.parse(message.toString());
-          if (data.id !== agentId) {
-            updateOtherAgent(data);
-          }
-        } catch(e) {}
-      });
+      if (navigator.geolocation) {
+        navigator.geolocation.watchPosition(updatePosition, handleGPSError, {
+          enableHighAccuracy: true,
+          maximumAge: 1000,
+          timeout: 15000
+        });
+      } else {
+        alert("GPS wird nicht unterstützt.");
+      }
     }
 
-    function sendMyPosition(position) {
+    function updatePosition(position) {
       const lat = position.coords.latitude;
       const lng = position.coords.longitude;
 
-      // Eignen Marker aktualisieren
       if (!myMarker) {
-        myMarker = L.marker([lat, lng]).addTo(map).bindPopup(`<b>Ich (${agentId})</b>`).openPopup();
-        map.setView([lat, lng], 16);
+        myMarker = L.marker([lat, lng]).addTo(map).bindPopup("Dein Standort").openPopup();
+        map.setView([lat, lng], 17);
       } else {
         myMarker.setLatLng([lat, lng]);
       }
 
-      // Position an alle anderen Agenten senden
-      if (mqttClient && mqttClient.connected) {
-        const payload = JSON.stringify({ id: agentId, lat: lat, lng: lng });
-        mqttClient.publish('schmalkalden/schnitzeljagd/agents', payload);
-      }
-
-      // Ziel-Check
       const dist = getDistanceInMeters(lat, lng, TARGET_LAT, TARGET_LNG);
-      if (dist <= 40) {
-        document.getElementById('statusText').innerHTML = "🎯 <b>Ziel erreicht!</b>";
-        document.getElementById('unlockBtn').style.display = "block";
-      }
-    }
+      document.getElementById('statusText').innerText = `Noch ${Math.round(dist)} Meter bis zum Ziel!`;
 
-    function updateOtherAgent(data) {
-      if (!otherAgentMarkers[data.id]) {
-        // Neuen Marker für anderen Agenten erstellen (roter Pin)
-        otherAgentMarkers[data.id] = L.marker([data.lat, data.lng], {
-          icon: L.divIcon({
-            className: 'custom-agent-pin',
-            html: `<div style="background:#ef4444; color:white; padding:2px 6px; border-radius:10px; font-size:10px; font-weight:bold; white-space:nowrap;">👤 ${data.id}</div>`,
-            iconSize: [60, 20]
-          })
-        }).addTo(map);
-      } else {
-        otherAgentMarkers[data.id].setLatLng([data.lat, data.lng]);
+      if (dist <= 40) {
+        document.getElementById('statusText').innerHTML = "🎯 <b>Du bist am Ziel angekommen!</b>";
+        document.getElementById('unlockBtn').style.display = "block";
       }
     }
 
@@ -333,7 +287,7 @@
       document.body.classList.toggle('dark-mode');
     }
 
-    function handleGPSäureError() {
+    function handleGPSError() {
       document.getElementById('statusText').innerText = "⚠️ GPS-Signal wird gesucht...";
     }
 
