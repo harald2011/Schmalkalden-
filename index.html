@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Agenten-Netzwerk - Schmalkalden</title>
+  <title>Agenten-Netzwerk & Funk - Schmalkalden</title>
 
   <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -19,6 +19,7 @@
       --text-main: #1e293b;
       --text-muted: #64748b;
       --border-color: #e2e8f0;
+      --chat-bg: #f8fafc;
     }
 
     body.dark-mode {
@@ -31,6 +32,7 @@
       --text-main: #f8fafc;
       --text-muted: #94a3b8;
       --border-color: #222222;
+      --chat-bg: #1a1a1a;
     }
 
     html, body {
@@ -108,6 +110,7 @@
       left: 0;
     }
 
+    /* Floating Panel unten */
     .control-panel {
       position: absolute;
       bottom: 20px;
@@ -122,6 +125,8 @@
       display: flex;
       flex-direction: column;
       gap: 10px;
+      max-width: 500px;
+      margin: 0 auto;
     }
 
     .status-msg {
@@ -131,17 +136,53 @@
       text-align: center;
     }
 
+    /* Chat Bereich im Panel */
+    .chat-box {
+      background: var(--chat-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      height: 110px;
+      overflow-y: auto;
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 12px;
+    }
+
+    .chat-msg {
+      padding: 4px 8px;
+      border-radius: 6px;
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      word-break: break-word;
+    }
+
+    .chat-input-row {
+      display: flex;
+      gap: 6px;
+    }
+
+    .chat-input {
+      flex: 1;
+      padding: 8px 12px;
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      background: var(--card-bg);
+      color: var(--text-main);
+      font-size: 13px;
+      outline: none;
+    }
+
     .btn-action {
       background: var(--primary);
       color: white;
       border: none;
-      padding: 12px;
-      border-radius: 10px;
-      font-size: 14px;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 13px;
       font-weight: 600;
       cursor: pointer;
-      box-shadow: 0 4px 12px rgba(37,99,235,0.2);
-      width: 100%;
     }
 
     .btn-success { background: var(--success); }
@@ -155,7 +196,7 @@
 
   <!-- Top Bar -->
   <div class="top-bar">
-    <div class="agent-title">🌐 Agenten-Navi Schmalkalden</div>
+    <div class="agent-title">🌐 Agenten-Funk Schmalkalden</div>
     <div class="top-right">
       <div class="timer">⏳ <span id="countdown">03:00:00</span></div>
       <button class="btn-dark" onclick="toggleDarkMode()">🌙</button>
@@ -167,14 +208,28 @@
     <div id="map"></div>
 
     <div class="control-panel">
-      <div id="statusText" class="status-msg">Tippe auf "GPS Starten", um deine Position aufzuzeichnen.</div>
-      <button id="startBtn" class="btn-action btn-success" onclick="startGPS()">📡 GPS Tracking Starten</button>
+      <div id="statusStatus" class="status-msg">Tippe auf "GPS & Funk Starten", um loszulegen.</div>
+      
+      <!-- Chat Nachrichtenverlauf -->
+      <div id="chatMessages" class="chat-box">
+        <div class="chat-msg"><i>System: Agenten-Funk bereit.</i></div>
+      </div>
+
+      <!-- Eingabe für den Funk -->
+      <div class="chat-input-row">
+        <input type="text" id="chatInput" class="chat-input" placeholder="Nachricht an andere Agenten..." onkeypress="handleKey(event)">
+        <button class="btn-action" onclick="sendChat()">Senden</button>
+      </div>
+
+      <button id="startBtn" class="btn-action btn-success" onclick="startSystem()">📡 GPS & Funk Starten</button>
       <button id="unlockBtn" class="btn-action" style="display:none;" onclick="unlockCodePrompt()">🔓 Code am Ziel eingeben</button>
     </div>
   </div>
 
   <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- MQTT.js für Live-Kommunikation -->
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
   <!-- Canvas Confetti -->
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.5.1/dist/confetti.browser.min.js"></script>
 
@@ -214,53 +269,84 @@
     const TARGET_LNG = myRoute[myRoute.length - 1][1];
     
     let map, myMarker;
+    let agentId = 'Agent-' + Math.floor(Math.random() * 900 + 100);
+    let mqttClient;
 
     function initMap() {
       map = L.map('map').setView(myRoute[0], 15);
-
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19,
-        attribution: '© OpenStreetMap'
-      }).addTo(map);
-
-      // Route einzeichnen
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
       L.polyline(myRoute, { color: '#2563eb', weight: 5, opacity: 0.8 }).addTo(map);
-
-      // Ziel-Marker
-      L.marker([TARGET_LAT, TARGET_LNG]).addTo(map).bindPopup('<b>🎯 Ziel</b>').openPopup();
+      L.marker([TARGET_LAT, TARGET_LNG]).addTo(map).bindPopup('<b>🎯 Ziel</b>');
     }
 
-    function startGPS() {
+    function startSystem() {
       document.getElementById('startBtn').style.display = 'none';
-      document.getElementById('statusText').innerText = "Suche GPS-Signal...";
+      document.getElementById('statusStatus').innerText = "Verbinde mit Funk-Netzwerk...";
 
-      if (navigator.geolocation) {
-        navigator.geolocation.watchPosition(updatePosition, handleGPSError, {
-          enableHighAccuracy: true,
-          maximumAge: 1000,
-          timeout: 15000
-        });
+      // MQTT Verbindung für Echtzeit-Chat & Tracking
+      mqttClient = mqtt.connect('wss://broker.hivemq.com:8884/mqtt');
+
+      mqttClient.on('connect', function () {
+        document.getElementById('statusStatus').innerText = `Verbunden als ${agentId}`;
+        mqttClient.subscribe('schmalkalden/schnitzeljagd/funk');
+
+        // GPS starten
+        if (navigator.geolocation) {
+          navigator.geolocation.watchPosition(updateGPS, () => {}, { enableHighAccuracy: true });
+        }
+      });
+
+      mqttClient.on('message', function (topic, message) {
+        try {
+          const data = JSON.parse(message.toString());
+          appendChatMessage(data.sender, data.text);
+        } catch(e) {}
+      });
+    }
+
+    function sendChat() {
+      const input = document.getElementById('chatInput');
+      const text = input.value.trim();
+      if (!text) return;
+
+      if (mqttClient && mqttClient.connected) {
+        const payload = JSON.stringify({ sender: agentId, text: text });
+        mqttClient.publish('schmalkalden/schnitzeljagd/funk', payload);
+        input.value = '';
       } else {
-        alert("GPS wird nicht unterstützt.");
+        alert("Funkverbindung noch nicht aktiv! Bitte erst auf Start tippen.");
       }
     }
 
-    function updatePosition(position) {
+    function handleKey(e) {
+      if (e.key === 'Enter') sendChat();
+    }
+
+    function appendChatMessage(sender, text) {
+      const box = document.getElementById('chatMessages');
+      const div = document.createElement('div');
+      div.className = 'chat-msg';
+      div.innerHTML = `<b>${sender}:</b> ${text}`;
+      box.appendChild(div);
+      box.scrollTop = box.scrollHeight;
+    }
+
+    function updateGPS(position) {
       const lat = position.coords.latitude;
       const lng = position.coords.longitude;
 
       if (!myMarker) {
-        myMarker = L.marker([lat, lng]).addTo(map).bindPopup("Dein Standort").openPopup();
+        myMarker = L.marker([lat, lng]).addTo(map).bindPopup("Mein Standort").openPopup();
         map.setView([lat, lng], 17);
       } else {
         myMarker.setLatLng([lat, lng]);
       }
 
       const dist = getDistanceInMeters(lat, lng, TARGET_LAT, TARGET_LNG);
-      document.getElementById('statusText').innerText = `Noch ${Math.round(dist)} Meter bis zum Ziel!`;
+      document.getElementById('statusStatus').innerText = `Entfernung zum Ziel: ${Math.round(dist)}m`;
 
       if (dist <= 40) {
-        document.getElementById('statusText').innerHTML = "🎯 <b>Du bist am Ziel angekommen!</b>";
+        document.getElementById('statusStatus').innerHTML = "🎯 <b>Ziel erreicht!</b>";
         document.getElementById('unlockBtn').style.display = "block";
       }
     }
@@ -287,11 +373,6 @@
       document.body.classList.toggle('dark-mode');
     }
 
-    function handleGPSError() {
-      document.getElementById('statusText').innerText = "⚠️ GPS-Signal wird gesucht...";
-    }
-
-    // Countdown Timer
     var totalSeconds = 3 * 60 * 60;
     setInterval(() => {
       var h = Math.floor(totalSeconds / 3600), m = Math.floor((totalSeconds % 3600) / 60), s = totalSeconds % 60;
